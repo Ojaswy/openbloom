@@ -1,7 +1,7 @@
 # ◎ Kevin
 
 > *"Actually, I'm kind of a big deal on Wall Street."*
-
+![](https://github.com/Ojaswy/openbloom/blob/main/bloom.png?raw=true)
 **Kevin** is a production-grade SEC 8-K earnings intelligence engine built for quantitative hedge funds. It scrapes, parses, and analyses earnings filings from EDGAR in seconds — outputting structured signals ready to plug into any alpha strategy.
 
 ---
