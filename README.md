@@ -1,7 +1,7 @@
 # ◎ Kevin
 
 > *"Actually, I'm kind of a big deal on Wall Street."*
-
+![](https://raw.githubusercontent.com/Ojaswy/openbloom/refs/heads/main/bloom.png)
 **Kevin** is a production-grade SEC 8-K earnings intelligence engine built for quantitative hedge funds. It scrapes, parses, and analyses earnings filings from EDGAR in seconds — outputting structured signals ready to plug into any alpha strategy.
 
 ---
@@ -19,8 +19,6 @@ The SEC 8-K (specifically **Item 2.02 – Results of Operations**) is the primar
 | Filing timestamp (pre/post market) | Event-timing strategies |
 | Risk flags (restatement, investigation) | Short-side triggers |
 
-Quant shops (including [Trexquant](https://trexquant.com), Renaissance, Two Sigma) extract alpha from this data every earnings season. Kevin makes the extraction clean, fast, and auditable.
-
 ---
 
 ## Architecture
@@ -33,10 +31,9 @@ kevin/
 │   ├── edgar/
 │   │   ├── feed.py          # EDGAR EFTS full-text search + CIK lookup
 │   │   ├── fetcher.py       # Async HTTP fetcher, rate-limited (10 req/s), disk cache
-│   │   └── classifier.py   # 8-K item type detection + market session
+│   │   └── classifier.py    # 8-K item type detection + market session
 │   ├── parse/
 │   │   ├── eps.py           # EPS extractor: table scan → text fallback
-│   │   │                    # (enhanced from Trexquant assessment code)
 │   │   ├── metrics.py       # Revenue, margin, guidance extractors
 │   │   └── llm_fallback.py  # LLM extraction when regex confidence < threshold
 │   ├── analyze/
@@ -46,7 +43,7 @@ kevin/
 └── cli.py                   # Click CLI: scan, filing, batch, watch
 ```
 
-### Parsing pipeline (single filing)
+### Parsing pipeline
 
 ```
 EDGAR EFTS search
@@ -98,9 +95,6 @@ python cli.py scan TSLA --llm anthropic
 
 # Enable LLM fallback (local Ollama, no key required)
 python cli.py scan TSLA --llm ollama
-
-# Enable LLM fallback (Claude Code CLI)
-python cli.py scan TSLA --llm claude
 
 # Bulk process from ticker list
 echo -e "NVDA\nMSFT\nAAPL\nTSLA\nMETA" > tickers.txt
@@ -157,13 +151,13 @@ python examples/demo.py
 
 ### CSV (`--out csv`)
 
-One row per filing — flat signal table ideal for pandas / any quant pipeline.
+One row per filing — flat signal table ideal for pandas or any quant pipeline.
 
 ---
 
 ## LLM Fallback
 
-The EPS regex achieves ~94% accuracy on structured press releases. The remaining ~6% are edge cases with unusual formatting (inline text-only releases, XBRL-only filings, non-standard tables).
+The EPS regex achieves ~94% accuracy on structured press releases. The remaining ~6% are edge cases: inline text-only releases, XBRL-only filings, non-standard tables.
 
 When regex confidence falls below threshold (default: score < 40), Kevin optionally invokes an LLM:
 
@@ -178,7 +172,7 @@ The LLM sees only a ~2,500 character snippet of the filing — not the full docu
 
 ---
 
-## Configuration (environment variables)
+## Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -224,68 +218,13 @@ df["sentiment_score"] = df["bull_score"] - df["bear_score"]
 
 ---
 
-## EPS Extraction — How it works
-
-The core parser (`kevin/parse/eps.py`) is an enhanced port of the Trexquant assessment code (`trex/`). Key differences:
-
-| Feature | trex original | Kevin |
-|---------|--------------|-------|
-| Output | `float \| None` | `EPSResult` with confidence score |
-| Scoring | Score-based candidate ranking | Same, + Jaccard similarity |
-| LLM fallback | No | Yes (multi-provider) |
-| GAAP/non-GAAP | Partially handled | Explicit `EPSType` enum |
-| Revenue / guidance | No | Yes |
-| Async | No | Yes (pipeline is fully async) |
-| Rate limiting | No | Yes (EDGAR-compliant 10 req/s) |
-| Disk cache | No | Yes (filings never re-fetched) |
-
----
-
 ## Requirements
 
 - Python 3.11+
 - No API key required for EDGAR scraping
-- Optional: `ANTHROPIC_API_KEY` (for LLM fallback)
-- Optional: [Ollama](https://ollama.ai) running locally (for local LLM fallback)
-
----
-
-## Related work in this repo
-
-- `trex/` — original Trexquant assessment code (EPS regex parser, reference implementation)
-- `apps/kevin/` — Next.js web UI wrapping this engine (TypeScript port of the parser)
+- Optional: `ANTHROPIC_API_KEY` for LLM fallback
+- Optional: [Ollama](https://ollama.ai) running locally for local LLM fallback
 
 ---
 
 *Kevin is named after Kevin Malone from The Office — who, despite appearances, always knew exactly where the money was.*
-
----
-
-## Version history
-
-### v3 — 2026-05-26 — Comprehensive audit & hardening
-
-- **config.py** — fixed `Path` object passed as `os.getenv` default (was fragile coercion); added clear `ValueError` message for invalid `KEVIN_LLM` values
-- **models.py** — replaced deprecated `datetime.utcnow` with `datetime.now(timezone.utc)` (Python 3.12 compat)
-- **edgar/feed.py** — removed dead `lookup_cik()` function (was making a wasted HTTP request to `browse-edgar` whose result was never used; function itself never called)
-- **edgar/fetcher.py** — moved `import json` from inside function body to module top
-- **edgar/classifier.py** — fixed hardcoded `-4` UTC offset (wrong by 1hr in winter EST); now uses `zoneinfo.ZoneInfo("America/New_York")` for DST-correct ET conversion with static fallback
-- **parse/eps.py** — fixed `_select_best(candidates)` fallback that could mislabel a diluted EPS as basic; now falls back to UNKNOWN-typed candidates only
-- **parse/llm_fallback.py** — fixed `OllamaClient` resource leak (was creating `httpx.AsyncClient` in `__init__` and never closing it); replaced `asyncio.get_event_loop()` with `asyncio.get_running_loop()` (3.10+ deprecation)
-- **analyze/sentiment.py** — removed duplicate `return ToneAnalysis(...)` block (unreachable dead code from prior truncation fix); removed unused `word_set` variable
-- **pipeline.py** — moved `re` pattern compilation out of `_strip_html` (was recompiling 3 patterns on every call); replaced all `datetime.utcnow()` with timezone-aware equivalent; cleaned up error handling
-- **cli.py** — fixed `scan` and `batch` commands creating a new event loop per ticker via `asyncio.run()` in a for-loop; now all tickers run concurrently under a single `asyncio.run(asyncio.gather(...))`; removed Rich `Live` import that was imported but unused
-- **examples/demo.py** — fixed `NameError` crash: `len(brief)` referenced `brief` before the loop assigned it; replaced with `len(briefs)`
-- **requirements.txt** — removed `aiolimiter>=1.1` (was listed but never used anywhere in the codebase)
-
-### v2 — 2026-05-20 — Kevin standalone Python engine
-
-- `kevin/edgar/` — async EDGAR EFTS search, CIK lookup, exhibit URL resolution, rate-limited fetcher (10 req/s), disk cache
-- `kevin/parse/eps.py` — production EPS extractor: table scan + text fallback + confidence scoring (enhanced port of trex/)
-- `kevin/parse/metrics.py` — revenue, gross margin, operating margin, guidance range extraction
-- `kevin/parse/llm_fallback.py` — multi-provider LLM fallback (Anthropic, Ollama, `claude -p`) when regex confidence < threshold
-- `kevin/analyze/sentiment.py` — lexical bull/bear/hedge tone analysis, risk flag detection, Q&A tension scoring
-- `kevin/analyze/signals.py` — weighted bull/bear scoring, EPS/revenue beat-miss surprise, tradable Signal with market session
-- `kevin/pipeline.py` — fully async orchestrator: ticker → list[KevinBrief] with bounded concurrency
-- `cli.py` — Click CLI: `scan`, `filing`, `batch`, `watch` commands; table/JSON/CSV output
-- `examples/demo.py` — zero-config demo against live EDGAR
