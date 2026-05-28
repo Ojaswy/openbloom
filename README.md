@@ -81,6 +81,13 @@ Signal generator  →  KevinBrief
 cd fin-engine/kevin
 pip install -r requirements.txt
 
+#TUI like shown above
+python tui.py                              # 20-stock default
+python tui.py NVDA TSLA AMD               # custom tickers
+python tui.py --llm anthropic             # Claude analysis
+python tui.py --llm ollama --model llama3.2
+python tui.py --llm ollama --host http://192.168.1.10:11434
+
 # Scan NVDA's last 30 days of 8-K earnings filings
 python cli.py scan NVDA
 
