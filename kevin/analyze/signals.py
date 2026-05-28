@@ -222,6 +222,12 @@ def generate_signal(
     risk_pen   = _risk_penalty(tone)
     confidence = _clamp(base_conf - risk_pen)
 
+    # Q&A tension penalty: elevated analyst pushback further reduces confidence
+    # (tension_score > 50 → up to 15-point drag, proportional above the threshold)
+    if tone.qa_tension_score is not None and tone.qa_tension_score > 50:
+        tension_pen = _clamp((tone.qa_tension_score - 50) / 50 * 15, 0.0, 15.0)
+        confidence  = _clamp(confidence - tension_pen)
+
     # ── Surprise metrics ──────────────────────────────────────────────────
     eps_surprise     = None
     eps_surprise_pct = None

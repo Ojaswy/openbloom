@@ -83,11 +83,17 @@ async def fetch_url(
     await _throttle()
     try:
         resp = await client.get(url, headers=_HEADERS)
-        if resp.status_code == 429:
-            log.warning("EDGAR 429 — backing off 5s then retrying")
-            await asyncio.sleep(5)
+
+        # Exponential backoff on 429: 5s → 10s → 20s (3 attempts total)
+        backoff = 5.0
+        for attempt in range(3):
+            if resp.status_code != 429:
+                break
+            log.warning("EDGAR 429 (attempt %d/3) — backing off %.0fs", attempt + 1, backoff)
+            await asyncio.sleep(backoff)
             await _throttle()
             resp = await client.get(url, headers=_HEADERS)
+            backoff *= 2
 
         if resp.status_code != 200:
             log.warning("HTTP %s for %s", resp.status_code, url)

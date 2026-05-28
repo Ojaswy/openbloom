@@ -17,7 +17,6 @@ Keys:
 from __future__ import annotations
 
 import asyncio
-import json
 import math
 import os
 import sys
@@ -485,7 +484,9 @@ class MetricsPane(Widget):
             gg = m.guidance
             raised = ("▲ RAISED" if gg.is_raised else "▼ LOWERED" if gg.is_raised is False else "GUIDANCE")
             gc     = "bright_green" if gg.is_raised else ("bright_red" if gg.is_raised is False else "bright_yellow")
-            guide  = f"${gg.lo:.2f}–${gg.hi:.2f}  mid ${gg.midpoint:.2f}"
+            lo_s   = f"${gg.lo:.2f}" if gg.lo is not None else "?"
+            hi_s   = f"${gg.hi:.2f}" if gg.hi is not None else "?"
+            guide  = f"{lo_s}–{hi_s}  mid ${gg.midpoint:.2f}"
             if gg.period:
                 guide += f"  {gg.period}"
             g.add_row(Text(raised, style=f"bold {gc}"), Text(guide, style="white"), Text(""), Text(""))
@@ -680,7 +681,9 @@ class AnalysisPane(Widget):
                       "bright_red"   if g.is_raised is False else "bright_yellow")
             log.write(Text(""))
             log.write(Text(f"  {raised}", style=f"bold {gc}"))
-            log.write(Text(f"   ${g.lo:.2f} – ${g.hi:.2f}  (mid ${g.midpoint:.2f})", style="white"))
+            lo_s = f"${g.lo:.2f}" if g.lo is not None else "?"
+            hi_s = f"${g.hi:.2f}" if g.hi is not None else "?"
+            log.write(Text(f"   {lo_s} – {hi_s}  (mid ${g.midpoint:.2f})", style="white"))
             if g.period:
                 log.write(Text(f"   {g.period}", style="color(240)"))
 
@@ -702,6 +705,14 @@ class AnalysisPane(Widget):
         log.write(Text(f"  LLM ({provider_name})", style="color(240)"))
         for line in full_text.split("\n"):
             log.write(Text(f"  {line}", style="white"))
+
+    def write_line(self, text: Text) -> None:
+        """Append one line — public alternative to direct _log() access."""
+        self._log().write(text)
+
+    def show_error(self, msg: str) -> None:
+        """Append a red error line."""
+        self._log().write(Text(f"  {msg}", style="bright_red"))
 
     def loading(self, ticker: str) -> None:
         log = self._log()
@@ -882,7 +893,7 @@ class KevinTerminal(App[None]):
             for f in concurrent.futures.as_completed(futs):
                 t = futs[f]
                 try:    results[t] = f.result()
-                except: results[t] = {"ticker": t, "ok": False}
+                except Exception: results[t] = {"ticker": t, "ok": False}
         self.call_from_thread(self._apply_quotes, results)
         # Also refresh chart for whatever is currently selected
         selected = self._selected
@@ -914,7 +925,7 @@ class KevinTerminal(App[None]):
         except Exception as e:
             ap = self.query_one("#ap", AnalysisPane)
             ap.clear()
-            ap._log().write(Text(f"  Error: {e}", style="bright_red"))
+            ap.show_error(f"Error: {e}")
 
     # ── UI updaters ───────────────────────────────────────────────────────────
     def _apply_quotes(self, quotes: dict[str, Any]) -> None:
@@ -961,15 +972,15 @@ class KevinTerminal(App[None]):
         ap = self.query_one("#ap", AnalysisPane)
         if not briefs:
             ap.clear()
-            ap._log().write(Text(f"  No recent earnings for {ticker}.", style="color(240)"))
+            ap.write_line(Text(f"  No recent earnings for {ticker}.", style="color(240)"))
             return
 
         brief = briefs[0]
         ap.write_structured(brief)
 
         if not self._llm_ready:
-            ap._log().write(Text(""))
-            ap._log().write(Text(
+            ap.write_line(Text(""))
+            ap.write_line(Text(
                 "  ── Set KEVIN_LLM=anthropic/ollama for AI commentary ──",
                 style="color(238)"
             ))
@@ -995,7 +1006,7 @@ class KevinTerminal(App[None]):
             )
             ap.end_llm(full, brief, self._llm_name)
         except Exception as e:
-            ap._log().write(Text(f"  LLM error: {e}", style="bright_red"))
+            ap.show_error(f"LLM error: {e}")
 
     # ── Chat ──────────────────────────────────────────────────────────────────
     async def handle_chat(self, msg: str) -> None:

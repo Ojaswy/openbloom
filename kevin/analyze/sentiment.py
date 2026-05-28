@@ -144,10 +144,9 @@ def analyse_tone(text: str) -> ToneAnalysis:
     Full tone analysis of a filing text.
     text should be plain text (HTML already stripped).
     """
-    low   = text.lower()
-    words = re.findall(r"\b\w+\b", low)
+    low = text.lower()
 
-    # Word counts - substring match catches stems (e.g. "restructur" -> "restructuring")
+    # Word counts — substring match catches stems (e.g. "restructur" -> "restructuring")
     bull_count  = sum(1 for w in BULL_WORDS  if w in low)
     bear_count  = sum(1 for w in BEAR_WORDS  if w in low)
     hedge_count = sum(1 for w in HEDGE_WORDS if w in low)
@@ -168,9 +167,9 @@ def analyse_tone(text: str) -> ToneAnalysis:
         dominant = Sentiment.NEUTRAL
 
     # Certainty score: inversely related to hedge density
-    total_words  = max(len(words), 1)
+    total_words   = max(sum(1 for _ in re.finditer(r"\b\w+\b", low)), 1)
     hedge_density = hedge_count / total_words * 1000   # per-thousand words
-    certainty    = max(0.0, min(100.0, 100 - hedge_density * 8))
+    certainty     = max(0.0, min(100.0, 100 - hedge_density * 8))
 
     return ToneAnalysis(
         bull_word_count    = bull_count,

@@ -61,7 +61,11 @@ def extract_revenue(text: str) -> tuple[float | None, float | None]:
             try:
                 raw  = float(m.group(1).replace(",", ""))
                 unit = m.group(2) if pat.groups >= 2 else "M"
-                revenue = _to_millions(raw, unit)
+                rev  = _to_millions(raw, unit)
+                # Sanity: SEC 8-K filers must have > $10M revenue to be plausible
+                if rev < 10:
+                    continue
+                revenue = rev
                 break
             except (IndexError, ValueError):
                 continue
@@ -124,20 +128,20 @@ def extract_operating_margin(text: str) -> float | None:
 _GUIDANCE_PATTERNS: list[re.Pattern] = [
     # "$X.XX to $Y.YY per share"
     re.compile(
-        r"\$\s*([\d.]+)\s+(?:to|–|-)\s+\$\s*([\d.]+)\s+"
+        r"\$\s*(\d+(?:\.\d+)?)\s+(?:to|–|-)\s+\$\s*(\d+(?:\.\d+)?)\s+"
         r"(?:per\s+(?:diluted\s+)?(?:common\s+)?share|eps)",
         re.I
     ),
     # "guidance of $X.XX to $Y.YY"
     re.compile(
-        r"(?:guidance|outlook|expect(?:s|ed)?)"
-        r"[^$\d]{0,40}\$\s*([\d.]+)\s+(?:to|–|-)\s+\$\s*([\d.]+)",
+        r"(?:guidance|outlook|expect(?:s|ed|ing)?)"
+        r"[^$\d]{0,40}\$\s*(\d+(?:\.\d+)?)\s+(?:to|–|-)\s+\$\s*(\d+(?:\.\d+)?)",
         re.I
     ),
     # "earnings per share of approximately $X.XX"
     re.compile(
-        r"(?:guidance|outlook|expect(?:s|ed)?)"
-        r"[^$\d]{0,60}\$\s*([\d.]+)\s+(?:per\s+(?:diluted\s+)?share|eps)",
+        r"(?:guidance|outlook|expect(?:s|ed|ing)?)"
+        r"[^$\d]{0,60}\$\s*(\d+(?:\.\d+)?)\s+(?:per\s+(?:diluted\s+)?share|eps)",
         re.I
     ),
 ]
@@ -146,6 +150,21 @@ _GUIDANCE_PATTERNS: list[re.Pattern] = [
 _PERIOD_PATTERNS = re.compile(
     r"\b(Q[1-4]\s+(?:FY)?\d{2,4}|(?:first|second|third|fourth)\s+quarter\s+(?:fiscal\s+)?\d{4}"
     r"|full[\s-]?year\s+\d{4}|FY\s*\d{2,4})\b",
+    re.I
+)
+
+# Guidance direction — raised vs lowered — from surrounding prose
+_GUIDANCE_RAISED_RE = re.compile(
+    r"(?:raise[sd]?|increas(?:e[sd]?|ing)|lift(?:ed|ing)?|upward)"
+    r".{0,80}"
+    r"(?:guidance|outlook|forecast|expectation)",
+    re.I
+)
+_GUIDANCE_LOWERED_RE = re.compile(
+    r"(?:lower(?:ed|s|ing)?|cut|reduc(?:e[sd]?|ing)|decreas(?:e[sd]?|ing)"
+    r"|withdr(?:ew|awn?)|downward)"
+    r".{0,80}"
+    r"(?:guidance|outlook|forecast|expectation)",
     re.I
 )
 
@@ -168,17 +187,27 @@ def extract_guidance(text: str) -> GuidanceRange | None:
             if not (0 <= mid <= 500):
                 continue
 
-            # Try to find the period this guidance refers to
+            # Widen context window for period and direction detection
+            ctx_start = max(0, m.start() - 400)
+            ctx       = text[ctx_start: m.end() + 400]
+
+            # Period
             period: str | None = None
-            ctx_start = max(0, m.start() - 200)
-            ctx       = text[ctx_start: m.end() + 200]
             pm = _PERIOD_PATTERNS.search(ctx)
             if pm:
                 period = pm.group(1)
 
+            # Guidance direction — raised / lowered — from surrounding prose
+            is_raised: bool | None = None
+            if _GUIDANCE_RAISED_RE.search(ctx):
+                is_raised = True
+            elif _GUIDANCE_LOWERED_RE.search(ctx):
+                is_raised = False
+
             return GuidanceRange(
                 lo=lo, hi=hi, midpoint=mid,
                 metric="eps", period=period,
+                is_raised=is_raised,
             )
         except (ValueError, IndexError):
             continue

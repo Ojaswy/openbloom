@@ -213,6 +213,13 @@ def _emit(text: str, path: str | None) -> None:
 @click.version_option("0.1.0", prog_name="kevin")
 def cli() -> None:
     """Kevin - SEC 8-K earnings intelligence engine."""
+    _DEFAULT_UA = "kevin-fin-engine research@fin-engine.local"
+    if cfg.EDGAR_UA == _DEFAULT_UA:
+        console.print(
+            "[yellow]⚠  KEVIN_EDGAR_UA is using a placeholder value. "
+            "SEC ToS requires a real User-Agent. "
+            "Set: KEVIN_EDGAR_UA='YourOrg/1.0 you@example.com'[/yellow]"
+        )
 
 
 # scan

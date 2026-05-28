@@ -36,6 +36,7 @@ from kevin.edgar.feed import (
     search_8k_filings,
 )
 from kevin.edgar.fetcher import build_client, fetch_filing_exhibit, throttle
+from kevin.market import fetch_consensus
 from kevin.models import FilingIndex, FilingMetrics, KevinBrief
 from kevin.parse.eps import extract_eps
 from kevin.parse.llm_fallback import get_llm_client, llm_extract_eps
@@ -263,6 +264,20 @@ async def analyse_ticker(
 
     briefs = [r for r in results if r is not None]
     briefs.sort(key=lambda b: b.index.filed_at, reverse=True)
+
+    # Inject analyst consensus (best-effort; never fails the pipeline)
+    try:
+        consensus = await asyncio.to_thread(fetch_consensus, ticker)
+        eps_est = consensus.get("eps_estimate")
+        rev_est = consensus.get("rev_estimate_mm")
+        for brief in briefs:
+            if eps_est is not None:
+                brief.metrics.eps_estimate = eps_est
+            if rev_est is not None:
+                brief.metrics.rev_estimate_mm = rev_est
+    except Exception:
+        pass
+
     return briefs
 
 
